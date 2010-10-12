@@ -162,7 +162,7 @@ void ofSoundPlayer::initializeFmod(){
 //---------------------------------------
 void ofSoundPlayer::closeFmod(){
 	if(bFmodInitialized){
-		FMOD_System_Close(sys);
+		//FMOD_System_Close(sys);
 		bFmodInitialized = false;
 	}
 }

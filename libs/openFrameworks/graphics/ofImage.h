@@ -8,6 +8,8 @@
 #include "FreeImage.h"
 #include "ofUtils.h"
 
+#include <hx/CFFI.h>
+
 typedef struct {
 
 	unsigned char * pixels;
@@ -32,6 +34,7 @@ void 	ofCloseFreeImage();		// when we exit, we shut down ofImage
 class ofImage : public ofBaseImage{
 
 	public :
+		value handler;
 
 		ofImage();
 		virtual ~ofImage();
@@ -101,7 +104,7 @@ class ofImage : public ofBaseImage{
 		void				putBmpIntoPixels(FIBITMAP * bmp, ofPixels &pix);
 
 		// utils:
-		static void			allocatePixels(ofPixels &pix, int width, int height, int bpp);
+		void			allocatePixels(ofPixels &pix, int width, int height, int bpp);
 		static void			swapRgb(ofPixels &pix);
 
 		ofPixels			myPixels;

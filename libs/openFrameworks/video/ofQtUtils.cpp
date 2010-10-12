@@ -36,9 +36,9 @@ void initializeQuicktime(){
 //----------------------------------------
 void closeQuicktime(){
 	if (bQuicktimeInitialized == true){
-		ExitMovies();
+		//ExitMovies();
 		#ifdef TARGET_WIN32
-			TerminateQTML();
+			//TerminateQTML();
 		#endif
 		bQuicktimeInitialized = false;
 	}

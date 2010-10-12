@@ -346,7 +346,7 @@ inline void  ofImage::allocatePixels(ofPixels &pix, int width, int height, int b
 			//ofLog(OF_LOG_NOTICE,"we are good, no reallocation needed");
 			bNeedToAllocate = false;
 		 } else {
-			delete[] pix.pixels;
+			//delete[] pix.pixels;
 			bNeedToAllocate = true;
 		 }
 	} else {
@@ -375,7 +375,8 @@ inline void  ofImage::allocatePixels(ofPixels &pix, int width, int height, int b
 				break;
 		}
 
-		pix.pixels			= new unsigned char[pix.width*pix.height*byteCount];
+		//pix.pixels			= new unsigned char[pix.width*pix.height*byteCount];
+		pix.pixels			= (unsigned char *) buffer_data(val_to_buffer(val_ocall1(handler, val_id("__newByteData"), alloc_int(pix.width*pix.height*byteCount))));
 		pix.bAllocated		= true;
 	}
 }

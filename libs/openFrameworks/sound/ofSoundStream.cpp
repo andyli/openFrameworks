@@ -138,6 +138,7 @@ void ofSoundStreamStart(){
 
 //---------------------------------------------------------
 void ofSoundStreamClose(){
+	/*
 	if(!audio) return;
 	try {
     	audio->stopStream();
@@ -146,6 +147,7 @@ void ofSoundStreamClose(){
    		error.printMessage();
  	}
 	delete audio;
+	*/
 }
 
 
