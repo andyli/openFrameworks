@@ -97,7 +97,7 @@ void ofRunApp(ofBaseApp * OFSA){
 	
 	#ifdef TARGET_OSX 
 		//this internally checks the executable path for osx
-		ofSetDataPathRoot("../../../data/");
+		ofSetDataPathRoot("data/");
 	#endif
 
 	atexit(ofExitCallback);
