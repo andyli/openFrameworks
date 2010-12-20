@@ -3,9 +3,6 @@
 build/
 obj/
 *.o
-openFrameworks.a
-openFrameworksDebug.a
-openFrameworksUniversal.a
 *.app/
 
 #rule to avoid non-official addons going into git
