@@ -104,6 +104,7 @@
     <ClInclude Include="..\..\..\openFrameworks\communication\ofSerial.h" />
     <ClInclude Include="..\..\..\openFrameworks\events\ofEvents.h" />
     <ClInclude Include="..\..\..\openFrameworks\events\ofEventUtils.h" />
+    <ClInclude Include="..\..\..\..\addons\ofxShader\src\ofxShader.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\openFrameworks\app\ofAppGlutWindow.cpp" />
@@ -125,6 +126,7 @@
     <ClCompile Include="..\..\..\openFrameworks\communication\ofArduino.cpp" />
     <ClCompile Include="..\..\..\openFrameworks\communication\ofSerial.cpp" />
     <ClCompile Include="..\..\..\openFrameworks\events\ofEvents.cpp" />
+    <ClCompile Include="..\..\..\..\addons\ofxShader\src\ofxShader.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
