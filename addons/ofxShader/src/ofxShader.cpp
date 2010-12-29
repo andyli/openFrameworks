@@ -149,7 +149,6 @@ void ofxShader::checkAndCreateProgram() {
 bool ofxShader::linkProgram() {
 		if(shaders.empty()) {
 			ofLog(OF_LOG_ERROR, "Trying to link GLSL program, but no shaders created yet");
-			return false;
 		} else {
 			checkAndCreateProgram();
 			
@@ -173,7 +172,6 @@ bool ofxShader::linkProgram() {
 			checkProgramInfoLog(program);
 			
 			bLoaded = true;
-			return true;
 		}
 		return bLoaded;
 }
