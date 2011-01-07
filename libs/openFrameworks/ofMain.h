@@ -29,7 +29,7 @@
 
 //--------------------------
 // audio
-#include "ofSoundStream.h"
+//#include "ofSoundStream.h"
 #include "ofSoundPlayer.h"
 
 //--------------------------
