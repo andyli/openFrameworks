@@ -1,15 +1,16 @@
 #include "ofGraphics.h"
 #include "ofAppRunner.h"
 #include "ofBitmapFont.h"
+#include "ofUtils.h"
 
 #ifdef TARGET_OSX
 	#include <OpenGL/glu.h>
 #endif
 
-#ifdef TARGET_OPENGLES
-	#include "glu.h"
-#endif
-
+//#ifdef TARGET_OPENGLES
+//	#include "glu.h"
+//#endif
+//
 #ifdef TARGET_LINUX
 	#include "GL/glu.h"
 #endif
@@ -22,7 +23,19 @@
     #define CALLBACK
 #endif
 
-#include <vector>
+#ifdef TARGET_WIN32
+	#define GLUT_BUILDING_LIB
+	#include "glut.h"
+#endif
+#ifdef TARGET_OSX
+	#include <GLUT/glut.h>
+#endif
+#ifdef TARGET_LINUX
+	#include <GL/glut.h>
+#endif
+
+
+#include <deque>
 
 //----------------------------------------------------------
 // static
@@ -35,14 +48,17 @@ bool 			bSmoothHinted		= false;
 bool			bUsingArbTex		= true;
 bool			bUsingNormalizedTexCoords = false;
 bool 			bBakgroundAuto		= true;
-int 			cornerMode			= OF_RECTMODE_CORNER;
-int 			polyMode			= OF_POLY_WINDING_ODD;
+ofRectMode		cornerMode			= OF_RECTMODE_CORNER;
+ofPolyWindingMode		polyMode	= OF_POLY_WINDING_ODD;
 
 int				curveResolution = 20;
 
+ofHandednessType coordHandedness;
+
 //style stuff - new in 006
 ofStyle			currentStyle;
-vector <ofStyle> styleHistory;
+deque <ofStyle> styleHistory;
+deque <ofRectangle> viewportHistory;
 
 static float circlePts[OF_MAX_CIRCLE_PTS][3];			// [points][axis]
 static float circlePtsScaled[OF_MAX_CIRCLE_PTS][3];		// [points][axis]
@@ -51,7 +67,7 @@ static float linePoints[2][3];							// [points][axis]
 static float rectPoints[4][3];							// [points][axis]
 
 //----------------------------------------------------------
-void  ofSetRectMode(int mode){
+void  ofSetRectMode(ofRectMode mode){
 	if (mode == OF_RECTMODE_CORNER) 		cornerMode = OF_RECTMODE_CORNER;
 	else if (mode == OF_RECTMODE_CENTER) 	cornerMode = OF_RECTMODE_CENTER;
 
@@ -59,58 +75,144 @@ void  ofSetRectMode(int mode){
 }
 
 //----------------------------------------------------------
-int ofGetRectMode(){
+ofRectMode ofGetRectMode(){
 	return 	cornerMode;
 }
 
-
-
 //----------------------------------------------------------
 void ofPushView() {
-	glPushAttrib(GL_VIEWPORT);		// push viewport settings
 	
-	//	glPushAttrib(GL_MATRIX_MODE);	// push active matrix mode
+	GLint viewport[4];
+	glGetIntegerv(GL_VIEWPORT, viewport);
+	
+	ofRectangle currentViewport;
+	currentViewport.set(viewport[0], viewport[1], viewport[2], viewport[3]);
+	viewportHistory.push_front(currentViewport);
+	
+	if( viewportHistory.size() > OF_MAX_VIEWPORT_HISTORY ){
+		viewportHistory.pop_back();
+		//should we warn here?
+		//ofLog(OF_LOG_WARNING, "ofPushView - warning: you have used ofPushView more than %i times without calling ofPopView - check your code!", OF_MAX_VIEWPORT_HISTORY);
+	}
+	
 	glMatrixMode(GL_PROJECTION);
 	glPushMatrix();
 	glMatrixMode(GL_MODELVIEW);
 	glPushMatrix();
-	//	glPopAttrib();					// pop active matrix mode
 }
 
 
 //----------------------------------------------------------
 void ofPopView() {
-	glPopAttrib();					// pop viewport settings
 	
-	//	glPushAttrib(GL_MATRIX_MODE);	// push active matrix mode
+	
+	if( viewportHistory.size() ){
+		ofRectangle viewRect = viewportHistory.front();
+		ofViewport(viewRect.x, viewRect.y, viewRect.width, viewRect.height);
+		viewportHistory.pop_front();
+	}
+	
 	glMatrixMode(GL_PROJECTION);
 	glPopMatrix();
 	glMatrixMode(GL_MODELVIEW);
 	glPopMatrix();
-	//	glPopAttrib();					// pop active matrix mode
+}
+
+//----------------------------------------------------------
+void ofViewport(ofRectangle viewport)
+{
+	ofViewport(viewport.x, viewport.y, viewport.width, viewport.height);
+}
+
+//----------------------------------------------------------
+void ofViewport(float x, float y, float width, float height, bool invertY) {
+	if(width == 0) width = ofGetWidth();
+	if(height == 0) height = ofGetHeight();
+	
+	if (invertY){
+		y = ofGetHeight() - (y + height);
+	}
+	
+	glViewport(x, y, width, height);
+}
+
+//----------------------------------------------------------
+ofRectangle ofGetCurrentViewport(){
+	
+	// I am using opengl calls here instead of returning viewportRect
+	// since someone might use glViewport instead of ofViewport...
+	
+	GLint viewport[4];					// Where The Viewport Values Will Be Stored
+	glGetIntegerv(GL_VIEWPORT, viewport);
+	ofRectangle view;
+	view.x = viewport[0];
+	view.y = viewport[1];
+	view.width = viewport[2];
+	view.height = viewport[3];
+	return view;
+	
+}
+
+//----------------------------------------------------------
+ofRectangle ofGetCurrentScreen(){
+	
+	ofRectangle screen;
+	screen.x = 0;
+	screen.y = 0;
+	screen.width = ofGetScreenWidth();
+	screen.height = ofGetScreenHeight();
+	return screen;
+	
+}
+//----------------------------------------------------------
+int ofGetViewportWidth(){
+	GLint viewport[4];					// Where The Viewport Values Will Be Stored
+	glGetIntegerv(GL_VIEWPORT, viewport);
+	return viewport[2];
+}
+
+//----------------------------------------------------------
+int ofGetViewportHeight(){
+	GLint viewport[4];					// Where The Viewport Values Will Be Stored
+	glGetIntegerv(GL_VIEWPORT, viewport);
+	return viewport[3];
 }
 
 
-//----------------------------------------------------------
-void ofViewport(float x, float y, float width, float height) {
-	if(width == 0) width = ofGetWidth();
-	if(height == 0) height = ofGetHeight();
 
-	glViewport(0, 0, width, height);
+
+//----------------------------------------------------------
+void ofSetCoordHandedness(ofHandednessType handedness) {
+	coordHandedness = handedness;
 }
 
+//----------------------------------------------------------
+ofHandednessType ofGetCoordHandedness() {
+	return coordHandedness;
+}
 
 //----------------------------------------------------------
-void ofSetupScreenPerspective(float width, float height, bool vFlip, float fov, float nearDist, float farDist) {
+void ofSetupScreenPerspective(float width, float height, int orientation,  bool vFlip, float fov, float nearDist, float farDist) {
 	if(width == 0) width = ofGetWidth();
 	if(height == 0) height = ofGetHeight();
-
-	float eyeX = width / 2;
-	float eyeY = height / 2;
+	if( orientation == 0 ) orientation = ofGetOrientation();
+		
+	float w = width;
+	float h = height;
+	
+	//we do this because ofGetWidth and ofGetHeight return orientated widths and height
+	//for the camera we need width and height of the actual screen
+	if( orientation == OF_ORIENTATION_90_LEFT || orientation == OF_ORIENTATION_90_RIGHT ){
+		h = width;
+		w = height;
+	}
+		
+	float eyeX = w / 2;
+	float eyeY = h / 2;
 	float halfFov = PI * fov / 360;
 	float theTan = tanf(halfFov);
 	float dist = eyeY / theTan;
-	float aspect = (float) width / height;
+	float aspect = (float) w / h;
 	
 	if(nearDist == 0) nearDist = dist / 10.0f;
 	if(farDist == 0) farDist = dist * 10.0f;
@@ -123,29 +225,86 @@ void ofSetupScreenPerspective(float width, float height, bool vFlip, float fov, 
 	glLoadIdentity();
 	gluLookAt(eyeX, eyeY, dist, eyeX, eyeY, 0, 0, 1, 0);
 	
-	if(vFlip) {
-		glScalef(1, -1, 1);           // invert Y axis so increasing Y goes down.
-		glTranslatef(0, -height, 0);       // shift origin up to upper-left corner.
+	//note - theo checked this on iPhone and Desktop for both vFlip = false and true
+	switch(orientation) {
+		case OF_ORIENTATION_180:
+			glRotatef(-180, 0, 0, 1);
+			if(vFlip){
+				glScalef(1, -1, 1);        
+				glTranslatef(-width, 0, 0);  
+			}else{
+				glTranslatef(-width, -height, 0);  			
+			}
+
+			break;
+			
+		case OF_ORIENTATION_90_RIGHT:
+			glRotatef(-90, 0, 0, 1);
+			if(vFlip){						
+				glScalef(-1, 1, 1);        
+			}else{
+				glScalef(-1, -1, 1);        
+				glTranslatef(0, -height, 0);    			
+			}
+			break;
+			
+		case OF_ORIENTATION_90_LEFT:
+			glRotatef(90, 0, 0, 1);
+			if(vFlip){			
+				glScalef(-1, 1, 1);      
+				glTranslatef(-width, -height, 0);
+			}else{
+				glScalef(-1, -1, 1);      			
+				glTranslatef(-width, 0, 0);
+			}
+			break;
+
+		case OF_ORIENTATION_DEFAULT:
+		default:
+			if(vFlip){
+				glScalef(1, -1, 1);        
+				glTranslatef(0, -height, 0);  
+			}
+			break;
 	}
+			
 }
 
 //----------------------------------------------------------
 void ofSetupScreenOrtho(float width, float height, bool vFlip, float nearDist, float farDist) {
-	if(width == 0) width = ofGetWidth();
-	if(height == 0) height = ofGetHeight();
+	if(width == 0) width = ofGetViewportWidth();
+	if(height == 0) height = ofGetViewportHeight();
+	
+	#ifndef TARGET_OPENGLES
 
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	if(vFlip) glOrtho(0, width, height, 0, nearDist, farDist);
-	else glOrtho(0, width, 0, height, nearDist, farDist);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+
+		ofSetCoordHandedness(OF_RIGHT_HANDED);
+
+		if(vFlip) {
+			glOrtho(0, width, height, 0, nearDist, farDist);
+			ofSetCoordHandedness(OF_LEFT_HANDED);
+		}
+		else glOrtho(0, width, 0, height, nearDist, farDist);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+	
+	#else
+		//FIX: is here http://stackoverflow.com/questions/2847574/opengl-es-2-0-equivalent-of-glortho
+		ofLog(OF_LOG_ERROR, "ofSetupScreenOrtho - you can't use glOrtho with iphone / ES at the moment");
+	#endif 
 }
 
 //----------------------------------------------------------
 void ofClear(float r, float g, float b, float a) {
-	glClearColor(r, g, b, a);
+	glClearColor(r / 255, g / 255, b / 255, a / 255);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+//----------------------------------------------------------
+void ofClear(float brightness, float a) {
+	ofClear(brightness, brightness, brightness, a);
 }
 
 //----------------------------------------------------------
@@ -265,6 +424,11 @@ void ofBackground(const ofColor & c){
 }
 
 //----------------------------------------------------------
+void ofBackground(float brightness) {
+	ofBackground(brightness);
+}
+
+//----------------------------------------------------------
 void ofBackground(int hexColor, float _a){
 	ofBackground ( (hexColor >> 16) & 0xff, (hexColor >> 8) & 0xff, (hexColor >> 0) & 0xff, _a);
 }
@@ -306,8 +470,19 @@ void ofSetLineWidth(float lineWidth){
 	currentStyle.lineWidth = lineWidth;
 }
 
+//----------------------------------------
 void ofSetCurveResolution(int res){
 	curveResolution = res;
+}
+
+//----------------------------------------
+void ofSetSphereResolution(int res) {
+	currentStyle.sphereResolution = res;
+}
+
+//----------------------------------------
+void ofSetDrawBitmapMode(ofDrawBitmapMode mode) {
+	currentStyle.drawBitmapMode = mode;
 }
 
 //----------------------------------------------------------
@@ -622,6 +797,166 @@ void ofBezier(float x0, float y0, float x1, float y1, float x2, float y2, float 
     ofEndShape();
 }
 
+//----------------------------------------
+void ofSphere(float x, float y, float z, float radius) {
+	ofSphere(ofPoint(x, y, z), radius);
+}
+
+//----------------------------------------
+void ofSphere(float x, float y, float radius) {
+	ofSphere(x, y, 0, radius);
+}
+
+//----------------------------------------
+void ofSphere(const ofPoint& position, float radius) {
+	ofPushMatrix();
+	ofTranslate(position);
+	ofSphere(radius);
+	ofPopMatrix();
+}
+
+//----------------------------------------
+void ofSphere(float radius) {
+	// TODO: add an implementation using ofMesh
+#ifndef TARGET_OPENGLES
+	// this needs to be swapped out with non-glut code
+	// for good references see cinder's implementation from paul bourke:
+	// https://github.com/cinder/Cinder/blob/master/src/cinder/gl/gl.cpp
+	// void drawSphere( const Vec3f &center, float radius, int segments )
+	// and processing's implementation of icospheres:
+	// https://code.google.com/p/processing/source/browse/trunk/processing/core/src/processing/core/PGraphics.java?r=7543
+	// public void sphere(float r)
+	
+	ofPushMatrix();
+	ofRotateX(90);
+	if(ofGetStyle().bFill) {
+		glutSolidSphere(radius, 2 * currentStyle.sphereResolution, currentStyle.sphereResolution);
+	} else {
+		glutWireSphere(radius, 2 * currentStyle.sphereResolution, currentStyle.sphereResolution);
+	}
+	ofPopMatrix();
+#endif
+}
+
+//----------------------------------------
+void ofBox(float x, float y, float z, float size) {
+	ofBox(ofPoint(x, y, z), size);
+}
+
+//----------------------------------------
+void ofBox(float x, float y, float size) {
+	ofBox(x, y, 0, size);
+}
+
+//----------------------------------------
+void ofBox(const ofPoint& position, float size) {
+	ofPushMatrix();
+	ofTranslate(position);
+	ofBox(size);
+	ofPopMatrix();
+}
+
+//----------------------------------------
+void ofBox(float size) {
+	ofPushMatrix();
+	if(ofGetCoordHandedness() == OF_LEFT_HANDED) {
+		ofScale(1, 1, -1);
+	}
+
+	float h = size * .5;
+	
+	glEnableClientState(GL_NORMAL_ARRAY);
+	glEnableClientState(GL_VERTEX_ARRAY);
+	
+	if(ofGetStyle().bFill) {
+		GLfloat vertices[] = {
+			+h,-h,+h, +h,-h,-h, +h,+h,-h, +h,+h,+h,
+			+h,+h,+h, +h,+h,-h, -h,+h,-h, -h,+h,+h,
+			+h,+h,+h, -h,+h,+h, -h,-h,+h, +h,-h,+h,
+			-h,-h,+h, -h,+h,+h, -h,+h,-h, -h,-h,-h,
+			-h,-h,+h, -h,-h,-h, +h,-h,-h, +h,-h,+h,
+			-h,-h,-h, -h,+h,-h, +h,+h,-h, +h,-h,-h
+		};
+		glVertexPointer(3, GL_FLOAT, 0, vertices);
+		
+		static GLfloat normals[] = {
+			+1,0,0, +1,0,0, +1,0,0, +1,0,0,
+			0,+1,0, 0,+1,0, 0,+1,0, 0,+1,0,
+			0,0,+1, 0,0,+1, 0,0,+1, 0,0,+1,
+			-1,0,0, -1,0,0, -1,0,0, -1,0,0,
+			0,-1,0, 0,-1,0, 0,-1,0, 0,-1,0,
+			0,0,-1, 0,0,-1, 0,0,-1, 0,0,-1
+		};
+		glNormalPointer(GL_FLOAT, 0, normals);
+
+		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+		static GLfloat tex[] = {
+			1,0, 0,0, 0,1, 1,1,
+			1,1, 1,0, 0,0, 0,1,
+			0,1, 1,1, 1,0, 0,0,
+			0,0, 0,1, 1,1, 1,0,
+			0,0, 0,1, 1,1, 1,0,
+			0,0, 0,1, 1,1, 1,0
+		};
+		glTexCoordPointer(2, GL_FLOAT, 0, tex);
+	
+		GLubyte indices[] = {
+			0,1,2, // right top left
+			0,2,3, // right bottom right
+			4,5,6, // bottom top right
+			4,6,7, // bottom bottom left	
+			8,9,10, // back bottom right
+			8,10,11, // back top left
+			12,13,14, // left bottom right
+			12,14,15, // left top left
+			16,17,18, // ... etc
+			16,18,19,
+			20,21,22,
+			20,22,23
+		};
+		glDrawElements(GL_TRIANGLES, 3 * 6 * 2, GL_UNSIGNED_BYTE, indices);
+		
+		glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+	} else {
+		GLfloat vertices[] = {
+			+h,+h,+h,
+			+h,+h,-h,
+			+h,-h,+h,
+			+h,-h,-h,
+			-h,+h,+h,
+			-h,+h,-h,
+			-h,-h,+h,
+			-h,-h,-h
+		};
+		glVertexPointer(3, GL_FLOAT, 0, vertices);
+		
+		static float n = sqrtf(3);
+		static GLfloat normals[] = {
+			+n,+n,+n,
+			+n,+n,-n,
+			+n,-n,+n,
+			+n,-n,-n,
+			-n,+n,+n,
+			-n,+n,-n,
+			-n,-n,+n,
+			-n,-n,-n
+		};
+		glNormalPointer(GL_FLOAT, 0, normals);
+
+		static GLubyte indices[] = {
+			0,1, 1,3, 3,2, 2,0,
+			4,5, 5,7, 7,6, 6,4,
+			0,4, 5,1, 7,3, 6,2
+		};
+		glDrawElements(GL_LINES, 4 * 2 * 3, GL_UNSIGNED_BYTE, indices);
+	}
+	
+	glDisableClientState(GL_VERTEX_ARRAY);
+	glDisableClientState(GL_NORMAL_ARRAY);
+
+	ofPopMatrix();
+}
+
 //----------------------------------------------------------
 void ofSetColor(const ofColor & color){
 	ofSetColor(color.r,color.g,color.b,color.a);
@@ -678,19 +1013,136 @@ void ofSetHexColor(int hexColor){
 	ofSetColor(r,g,b);
 }
 
+
+//----------------------------------------------------------
+
+void ofEnableBlendMode(ofBlendMode blendMode){
+    switch (blendMode){
+            
+        case OF_BLENDMODE_ALPHA:{
+            glEnable(GL_BLEND);
+			#ifndef TARGET_OPENGLES			
+				glBlendEquation(GL_FUNC_ADD);
+			#endif  			
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            currentStyle.blending = 1;
+            currentStyle.blendSrc = GL_SRC_ALPHA;
+            currentStyle.blendDst = GL_ONE_MINUS_SRC_ALPHA;
+			#ifndef TARGET_OPENGLES						
+				currentStyle.blendEquation = GL_FUNC_ADD;
+			#endif  						
+            break;
+        }
+      
+        case OF_BLENDMODE_ADD:{
+            glEnable(GL_BLEND);
+			#ifndef TARGET_OPENGLES			
+				glBlendEquation(GL_FUNC_ADD);
+			#endif  			
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+            currentStyle.blending = 1;
+            currentStyle.blendSrc = GL_SRC_ALPHA;
+            currentStyle.blendDst = GL_ONE;
+			#ifndef TARGET_OPENGLES						
+				currentStyle.blendEquation = GL_FUNC_ADD;
+			#endif  
+			break;
+        }
+                   
+        case OF_BLENDMODE_MULTIPLY:{
+            glEnable(GL_BLEND);
+			#ifndef TARGET_OPENGLES			
+				glBlendEquation(GL_FUNC_ADD);
+			#endif  			
+			glBlendFunc(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA /* GL_ZERO or GL_ONE_MINUS_SRC_ALPHA */);
+            currentStyle.blending = 1;
+            currentStyle.blendSrc = GL_DST_COLOR;
+            currentStyle.blendDst = GL_ONE_MINUS_SRC_ALPHA;
+			#ifndef TARGET_OPENGLES						
+				currentStyle.blendEquation = GL_FUNC_ADD;
+			#endif  
+			break;
+        }
+       
+        case OF_BLENDMODE_SCREEN:{
+            glEnable(GL_BLEND);
+			#ifndef TARGET_OPENGLES			
+				glBlendEquation(GL_FUNC_ADD);
+			#endif  			
+            glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE);
+            currentStyle.blending = 1;
+            currentStyle.blendSrc = GL_ONE_MINUS_DST_COLOR;
+            currentStyle.blendDst = GL_ONE;
+			#ifndef TARGET_OPENGLES						
+				currentStyle.blendEquation = GL_FUNC_ADD;
+			#endif  
+			break;
+        }
+         		 
+        case OF_BLENDMODE_SUBTRACT:{
+            glEnable(GL_BLEND);
+		#ifndef TARGET_OPENGLES
+            glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
+		#else 
+			ofLog(OF_LOG_WARNING, "OF_BLENDMODE_SUBTRACT not currently supported on iPhone");
+		#endif  
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+            currentStyle.blending = 1;
+            currentStyle.blendSrc = GL_SRC_ALPHA;
+            currentStyle.blendDst = GL_ONE;
+			#ifndef TARGET_OPENGLES						
+				currentStyle.blendEquation = GL_FUNC_ADD;
+			#endif  
+			break;
+        }
+		
+            
+        default:
+            break;
+    }
+}
+
+//----------------------------------------------------------
+void ofEnablePointSprites() {
+#ifdef TARGET_OF_IPHONE
+	glEnable(GL_POINT_SPRITE_OES);
+	glTexEnvi(GL_POINT_SPRITE_OES, GL_COORD_REPLACE_OES, GL_TRUE);
+	// does look like this needs to be enabled in ES because
+	// it is always eneabled...
+	//glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
+	
+#else
+	glEnable(GL_POINT_SPRITE);
+	glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
+	glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);	
+#endif
+}
+
+//----------------------------------------------------------
+void ofDisablePointSprites() {
+#ifdef TARGET_OF_IPHONE
+	glDisable(GL_POINT_SPRITE_OES);
+#else
+	glDisable(GL_POINT_SPRITE);
+#endif
+}
+
+//----------------------------------------------------------
+void ofDisableBlendMode()
+{
+    glDisable(GL_BLEND);
+	currentStyle.blending = 0;
+}
+
 //----------------------------------------------------------
 void ofEnableAlphaBlending(){
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	currentStyle.blending = 1;
+	ofEnableBlendMode(OF_BLENDMODE_ALPHA);
 }
 
 //----------------------------------------------------------
 void ofDisableAlphaBlending(){
-	glDisable(GL_BLEND);
-	currentStyle.blending = 0;
+    ofDisableBlendMode();
 }
-
 
 //----------------------------------------------------------
 void ofEnableSmoothing(){
@@ -713,6 +1165,8 @@ void ofSetStyle(ofStyle style){
 
 	//circle resolution - don't worry it only recalculates the display list if the res has changed
 	ofSetCircleResolution(style.circleResolution);
+	
+	ofSetSphereResolution(style.sphereResolution);
 
 	//line width - finally!
 	ofSetLineWidth(style.lineWidth);
@@ -743,6 +1197,9 @@ void ofSetStyle(ofStyle style){
 	}else{
 		ofDisableAlphaBlending();
 	}
+	
+	//bitmap draw mode
+	ofSetDrawBitmapMode(style.drawBitmapMode);
 }
 
 //----------------------------------------------------------
@@ -752,11 +1209,11 @@ ofStyle ofGetStyle(){
 
 //----------------------------------------------------------
 void ofPushStyle(){
-	styleHistory.insert(styleHistory.begin(), currentStyle);
+	styleHistory.push_front(currentStyle);
 
 	//if we are over the max number of styles we have set, then delete the oldest styles.
 	if( styleHistory.size() > OF_MAX_STYLE_HISTORY ){
-		styleHistory.erase(styleHistory.begin() + OF_MAX_STYLE_HISTORY, styleHistory.end());
+		styleHistory.pop_back();
 		//should we warn here?
 		//ofLog(OF_LOG_WARNING, "ofPushStyle - warning: you have used ofPushStyle more than %i times without calling ofPopStyle - check your code!", OF_MAX_STYLE_HISTORY);
 	}
@@ -765,8 +1222,8 @@ void ofPushStyle(){
 //----------------------------------------------------------
 void ofPopStyle(){
 	if( styleHistory.size() ){
-		ofSetStyle(styleHistory[0]);
-		styleHistory.erase(styleHistory.begin(), styleHistory.begin()+1);
+		ofSetStyle(styleHistory.front());
+		styleHistory.pop_front();
 	}
 }
 
@@ -783,9 +1240,10 @@ void ofPopMatrix(){
 }
 
 //----------------------------------------------------------
-void ofTranslate(const ofPoint & p){
+void ofTranslate(const ofPoint& p){
 	glTranslatef(p.x, p.y, p.z);
 }
+
 
 //----------------------------------------------------------
 void ofTranslate(float x, float y, float z){
@@ -834,39 +1292,6 @@ void ofDrawBitmapString(string textString, float x, float y){
 }
 //--------------------------------------------------
 void ofDrawBitmapString(string textString, float x, float y, float z){
-#ifndef TARGET_OPENGLES	// temp for now, until is ported from existing iphone implementations
-
-    glPushClientAttrib( GL_CLIENT_PIXEL_STORE_BIT );
-    glPixelStorei( GL_UNPACK_SWAP_BYTES,  GL_FALSE );
-    glPixelStorei( GL_UNPACK_LSB_FIRST,   GL_FALSE );
-    glPixelStorei( GL_UNPACK_ROW_LENGTH,  0        );
-    glPixelStorei( GL_UNPACK_SKIP_ROWS,   0        );
-    glPixelStorei( GL_UNPACK_SKIP_PIXELS, 0        );
-    glPixelStorei( GL_UNPACK_ALIGNMENT,   1        );
-
-	int len = (int)textString.length();
-	float yOffset = 0;
-	float fontSize = 8.0f;
-	glRasterPos3f(x,y,z);
-	bool bOrigin = false;
-	for(int c = 0; c < len; c++)
-	{
-		if(textString[c] == '\n')
-		{
-
-			yOffset += bOrigin ? -1 : 1 * (fontSize*1.7);
-			glRasterPos2f(x,y + (int)yOffset);
-		} else if (textString[c] >= 32){
-			// < 32 = control characters - don't draw
-			// solves a bug with control characters
-			// getting drawn when they ought to not be
-			ofDrawBitmapCharacter(textString[c]);
-			//ofDrawBitmapCharacter(textString[c], x + (c * 8), y);
-		}
-	}
-
-	glPopClientAttrib( );
-#else 
 	
 	// this is copied from the ofTrueTypeFont
 	GLboolean blend_enabled = glIsEnabled(GL_BLEND);
@@ -874,23 +1299,139 @@ void ofDrawBitmapString(string textString, float x, float y, float z){
 	glGetIntegerv( GL_BLEND_SRC, &blend_src );
 	glGetIntegerv( GL_BLEND_DST, &blend_dst );
 	
-    	glEnable(GL_BLEND);
+	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	// (c) enable texture once before we start drawing each char (no point turning it on and off constantly)
 	
 	
 	int len = (int)textString.length();
-	float yOffset = 0;
+	//float yOffset = 0;
 	float fontSize = 8.0f;
 	bool bOrigin = false;
 	
-	float sx = x;
-	float sy = y - fontSize;
+	float sx = 0;
+	float sy = -fontSize;
 	
-	for(int c = 0; c < len; c++)
-	{
-		if(textString[c] == '\n')
-		{
+	
+	///////////////////////////
+	// APPLY TRANSFORM / VIEW
+	///////////////////////////
+	//
+	
+	bool hasModelView = false;
+	bool hasProjection = false;
+	bool hasViewport = false;
+	
+	ofRectangle rViewport;
+	
+	switch (currentStyle.drawBitmapMode) {
+		
+		case OF_BITMAPMODE_SIMPLE:
+			
+			sx += x;
+			sy += y;
+			break;
+			
+		case OF_BITMAPMODE_SCREEN:
+			
+			hasViewport = true;
+			ofPushView();
+			
+			rViewport = ofGetCurrentScreen();			
+			ofViewport(rViewport);
+			
+			glMatrixMode(GL_PROJECTION);
+			glLoadIdentity();
+			glMatrixMode(GL_MODELVIEW);
+			glLoadIdentity();
+			
+			glTranslatef(-1, 1, 0);
+			glScalef(2/rViewport.width, -2/rViewport.height, 1);
+
+			ofTranslate(x, y, 0);
+			break;
+		
+		case OF_BITMAPMODE_VIEWPORT:
+			
+			rViewport = ofGetCurrentViewport();
+			
+			hasProjection = true;
+			glMatrixMode(GL_PROJECTION);
+			glPushMatrix();
+			glLoadIdentity();
+			
+			hasModelView = true;
+			glMatrixMode(GL_MODELVIEW);
+			glPushMatrix();
+			glLoadIdentity();
+			
+			glTranslatef(-1, 1, 0);
+			glScalef(2/rViewport.width, -2/rViewport.height, 1);
+			
+			ofTranslate(x, y, 0);
+			break;
+
+		case OF_BITMAPMODE_MODEL:
+			
+			hasModelView = true;
+			glMatrixMode(GL_MODELVIEW);
+			glPushMatrix();
+
+			ofTranslate(x, y, z);
+			ofScale(1, -1, 0);
+			break;
+
+		case OF_BITMAPMODE_MODEL_BILLBOARD:
+			//our aim here is to draw to screen
+			//at the viewport position related
+			//to the world position x,y,z
+			
+			// ***************
+			// this will not compile for opengl ES
+			// ***************
+#ifndef TARGET_OF_IPHONE 
+			//gluProject method
+			GLdouble modelview[16], projection[16];
+			GLint view[4];
+			double dScreenX, dScreenY, dScreenZ;
+			glGetDoublev(GL_MODELVIEW_MATRIX, modelview);
+			glGetDoublev(GL_PROJECTION_MATRIX, projection);
+			glGetIntegerv(GL_VIEWPORT, view);
+			view[0] = 0; view[1] = 0; //we're already drawing within viewport
+			gluProject(x, y, z, modelview, projection, view, &dScreenX, &dScreenY, &dScreenZ);
+			
+			rViewport = ofGetCurrentViewport();
+			
+			hasProjection = true;
+			glMatrixMode(GL_PROJECTION);
+			glPushMatrix();
+			glLoadIdentity();
+			
+			hasModelView = true;
+			glMatrixMode(GL_MODELVIEW);
+			glPushMatrix();
+			glLoadIdentity();
+			
+			glTranslatef(-1, -1, 0);
+			glScalef(2/rViewport.width, 2/rViewport.height, 1);
+			
+			glTranslatef(dScreenX, dScreenY, 0);
+			glScalef(1, -1, 1);
+#endif
+			break;
+
+		default:
+			break;
+	}
+	//
+	///////////////////////////
+	
+	
+	// (c) enable texture once before we start drawing each char (no point turning it on and off constantly)
+	//We do this because its way faster
+	ofDrawBitmapCharacterStart();
+	
+	for(int c = 0; c < len; c++){
+		if(textString[c] == '\n'){
 			
 			sy += bOrigin ? -1 : 1 * (fontSize*1.7);
 			sx = x;
@@ -905,13 +1446,27 @@ void ofDrawBitmapString(string textString, float x, float y, float z){
 			sx += fontSize;
 		}
 	}
+	//We do this because its way faster
+	ofDrawBitmapCharacterEnd();
 	
-	if( !blend_enabled )
+	
+	if (hasModelView)
+		glPopMatrix();
+	
+	if (hasProjection)
+	{
+		glMatrixMode(GL_PROJECTION);
+		glPopMatrix();
+		glMatrixMode(GL_MODELVIEW);
+	}
+	
+	if (hasViewport)
+		ofPopView();
+
+	if( !blend_enabled ){
 		glDisable(GL_BLEND);
+	}
 	glBlendFunc( blend_src, blend_dst );
-	
-	
-#endif
 }
 
 
@@ -1074,7 +1629,7 @@ void clearCurveVertices(){
 }
 
 //----------------------------------------------------------
-void ofSetPolyMode(int mode){
+void ofSetPolyMode(ofPolyWindingMode mode){
 	switch (mode){
 		case OF_POLY_WINDING_ODD:
 			polyMode = OF_POLY_WINDING_ODD;
@@ -1201,6 +1756,21 @@ void ofVertex(ofPoint & p) {
 	ofVertex(p.x, p.y);
 }
 
+//----------------------------------------------------------
+void ofVertexes( const vector <ofPoint> & polyPoints ){
+	if( polyPoints.size() ){
+		clearCurveVertices();
+		
+		for( int k = 0; k < (int)polyPoints.size(); k++){
+			double* point = new double[3];
+			point[0] = polyPoints[k].x;
+			point[1] = polyPoints[k].y;
+			point[2] = 0;
+			polyVertices.push_back(point);		
+		}
+	}
+}
+
 //---------------------------------------------------
 void ofCurveVertex(float x, float y){
 
@@ -1254,9 +1824,18 @@ void ofCurveVertex(float x, float y){
 
 }
 
+//----------------------------------------------------------
+void ofCurveVertexes( const vector <ofPoint> & curvePoints){
+	if( curvePoints.size() ){
+		for( int k = 0; k < (int)curvePoints.size(); k++){
+			ofCurveVertex(curvePoints[k].x, curvePoints[k].y);		
+		}
+	}
+}
+
 //---------------------------------------------------
 void ofCurveVertex(ofPoint & p) {
-	ofVertex(p.x, p.y);
+	ofCurveVertex(p.x, p.y);
 }
 
 //---------------------------------------------------

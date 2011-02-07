@@ -1,20 +1,26 @@
-#ifndef OF_GEOM
-#define OF_GEOM
+#pragma once
 
 #include "ofConstants.h"
+#include "ofColor.h"
+#include "ofPoint.h"
+#include "ofMatrix4x4.h"
+#include "ofRectangle.h"
 #include "ofTypes.h"
 
 #define  	CIRC_RESOLUTION		    22				// 22 pts for a circle...
 
+enum ofHandednessType {OF_LEFT_HANDED, OF_RIGHT_HANDED};
+
 // bg color
 float * ofBgColorPtr();
 void ofBackground(const ofColor & c);
+void ofBackground(float brightness);
 void ofBackground(int hexColor, float _a=255.0f);
 void ofBackground(int r, int g, int b, int a=255);
 
 // user's access to settings (bgAuto, corner mode):
 void 	ofSetBackgroundAuto(bool bManual);		// default is true
-void 	ofSetRectMode(int mode);		// set the mode, either to OF_RECTMODE_CORNER or OF_RECTMODE_CENTER
+void 	ofSetRectMode(ofRectMode mode);		// set the mode, either to OF_RECTMODE_CORNER or OF_RECTMODE_CENTER
 
 
 // push and pop all matrices and viewport
@@ -24,11 +30,22 @@ void ofPopView();
 // setup matrices and viewport (upto you to push and pop view before and after)
 // if width or height are 0, assume windows dimensions (ofGetWidth(), ofGetHeight())
 // if nearDist or farDist are 0 assume defaults (calculated based on width / height)
-void ofViewport(float x = 0, float y = 0, float width = 0, float height = 0);
-void ofSetupScreenPerspective(float width = 0, float height = 0, bool vFlip = true, float fov = 60, float nearDist = 0, float farDist = 0);
+ofRectangle ofGetCurrentViewport();
+ofRectangle ofGetCurrentScreen();
+void ofViewport(float x = 0, float y = 0, float width = 0, float height = 0, bool invertY = true);
+void ofViewport(ofRectangle viewport = ofGetCurrentScreen());
+void ofSetupScreenPerspective(float width = 0, float height = 0, int orientation = 0, bool vFlip = true, float fov = 60, float nearDist = 0, float farDist = 0);
 void ofSetupScreenOrtho(float width = 0, float height = 0, bool vFlip = true, float nearDist = -1, float farDist = 1);
+int ofGetViewportWidth();
+int ofGetViewportHeight();
 
-void ofClear(float r=0, float g=0, float b=0, float a=0);
+
+
+void ofSetCoordHandedness(ofHandednessType handedness);
+ofHandednessType ofGetCoordHandedness();
+
+void ofClear(float r, float g, float b, float a=0);
+void ofClear(float brightness, float a=0);
 void ofClearAlpha();
 
 
@@ -57,10 +74,11 @@ void ofRestoreMinMagFilters();
 
 // OF's access to settings (bgAuto, origin, corner mode):
 bool 	ofbClearBg();
-int 	ofGetRectMode();				// default is OF_RECTMODE_CORNER
+ofRectMode 	ofGetRectMode();				// default is OF_RECTMODE_CORNER
 
 void ofSetCircleResolution(int res);  		// if there 22 is a problem, you can change it here
 void ofSetCurveResolution(int res);
+void ofSetSphereResolution(int res);
 
 // geometry 
 void ofTriangle(float x1,float y1,float x2,float y2,float x3, float y3);
@@ -87,6 +105,15 @@ void ofRect(float x,float y,float z,float w,float h);
 void ofCurve(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3);
 void ofBezier(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3);
 
+void ofSphere(float x, float y, float z, float radius);
+void ofSphere(float x, float y, float radius);
+void ofSphere(const ofPoint& position, float radius);
+void ofSphere(float radius);
+
+void ofBox(float x, float y, float z, float size);
+void ofBox(float x, float y, float size);
+void ofBox(const ofPoint& position, float size);
+void ofBox(float size);
 
 // drawing options
 void ofNoFill();
@@ -102,6 +129,14 @@ void ofSetColor(const ofColor & color);
 void ofSetColor(const ofColor & color, int _a);
 void ofSetColor(int gray); // new set a color as grayscale with one argument
 void ofSetHexColor( int hexColor ); // hex, like web 0xFF0033;
+
+// Blending
+void ofEnableBlendMode(ofBlendMode blendMode);
+void ofDisableBlendMode();
+
+// point sprites
+void ofEnablePointSprites();
+void ofDisablePointSprites();
 
 // transparency
 void ofEnableAlphaBlending();  // this just turns on and off opengl blending, the common mode
@@ -131,9 +166,10 @@ void ofRotate(float degrees);
 
 // bitmapped type
 // ** note, this uses glDrawPixels and may be S L 0 W on some graphics cards
-void ofDrawBitmapString(string textString, const ofPoint & p);
 void ofDrawBitmapString(string textString, float x, float y);
 void ofDrawBitmapString(string textString, float x, float y, float z);
+void ofDrawBitmapString(string textString, const ofPoint & p);
+void ofSetDrawBitmapMode(ofDrawBitmapMode mode);
 
 // screen coordinate things / default gl values
 void ofSetupGraphicDefaults();
@@ -141,15 +177,16 @@ void ofSetupScreen();
 
 void ofCurveVertex(float x, float y);
 void ofCurveVertex(ofPoint & p);
+void ofCurveVertexes(const vector <ofPoint> & curvePoints);
 
 void ofBezierVertex(float x1, float y1, float x2, float y2, float x3, float y3);
 
 // for polygons
-void ofSetPolyMode(int mode);	
+void ofSetPolyMode(ofPolyWindingMode mode);
 void ofBeginShape();
 void ofVertex(float x, float y);
 void ofVertex(ofPoint & p);
+void ofVertexes(const vector <ofPoint> & polyPoints);
+
 void ofEndShape(bool bClose = false);
 void ofNextContour(bool bClose = false);  // for multi contour shapes!
-
-#endif

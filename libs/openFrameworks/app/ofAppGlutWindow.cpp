@@ -1,36 +1,49 @@
 #include "ofAppGlutWindow.h"
 #include "ofBaseApp.h"
 #include "ofMain.h"
+#include "ofEvents.h"
+
+#ifdef TARGET_WIN32
+	#define GLUT_BUILDING_LIB
+	#include "glut.h"
+#endif
+#ifdef TARGET_OSX
+	#include "../../../libs/glut/lib/osx/GLUT.framework/Versions/A/Headers/glut.h"
+#endif
+#ifdef TARGET_LINUX
+	#include <GL/glut.h>
+#endif
+
 
 // glut works with static callbacks UGH, so we need static variables here:
 
-int				windowMode;
-bool			bNewScreenMode;
-float			timeNow, timeThen, fps;
-int				nFramesForFPS;
-int				nFrameCount;
-int				buttonInUse;
-bool			bEnableSetupScreen;
+static int			windowMode;
+static bool			bNewScreenMode;
+static float		timeNow, timeThen, fps;
+static int			nFramesForFPS;
+static int			nFrameCount;
+static int			buttonInUse;
+static bool			bEnableSetupScreen;
 
-bool			bFrameRateSet;
-int 			millisForFrame;
-int 			prevMillis;
-int 			diffMillis;
 
-float 			frameRate;
+static bool			bFrameRateSet;
+static int 			millisForFrame;
+static int 			prevMillis;
+static int 			diffMillis;
 
-double			lastFrameTime;
+static float 		frameRate;
 
-int				requestedWidth;
-int				requestedHeight;
-int 			nonFullScreenX;
-int 			nonFullScreenY;
-int				windowW;
-int				windowH;
-int				mouseX, mouseY;
-ofBaseApp *		ofAppPtr;
+static double		lastFrameTime;
 
-int             nFramesSinceWindowResized;
+static int			requestedWidth;
+static int			requestedHeight;
+static int 			nonFullScreenX;
+static int 			nonFullScreenY;
+static int			windowW;
+static int			windowH;
+static ofBaseApp *	ofAppPtr;
+static int          nFramesSinceWindowResized;
+static int			orientation;
 
 #ifdef TARGET_WIN32
 
@@ -45,6 +58,64 @@ int             nFramesSinceWindowResized;
 static WNDPROC currentWndProc;
 static HWND handle  = NULL;
 
+// This function takes in a wParam from the WM_DROPFILES message and 
+// prints all the files to a message box.
+
+void HandleFiles(WPARAM wParam)
+{
+    // DragQueryFile() takes a LPWSTR for the name so we need a TCHAR string
+    TCHAR szName[MAX_PATH];
+
+    // Here we cast the wParam as a HDROP handle to pass into the next functions
+    HDROP hDrop = (HDROP)wParam;
+
+	POINT pt;
+	DragQueryPoint(hDrop, &pt);
+	//printf("%i %i \n", pt.x, pt.y);
+	
+	ofDragInfo info;
+	info.position.x = pt.x;
+	info.position.y = pt.y;
+
+
+    // This functions has a couple functionalities.  If you pass in 0xFFFFFFFF in
+    // the second parameter then it returns the count of how many filers were drag
+    // and dropped.  Otherwise, the function fills in the szName string array with
+    // the current file being queried.
+    int count = DragQueryFile(hDrop, 0xFFFFFFFF, szName, MAX_PATH);
+
+	
+    // Here we go through all the files that were drag and dropped then display them
+    for(int i = 0; i < count; i++)
+    {
+        // Grab the name of the file associated with index "i" in the list of files dropped.
+        // Be sure you know that the name is attached to the FULL path of the file.
+        DragQueryFile(hDrop, i, szName, MAX_PATH);
+		
+		wchar_t * s = szName;
+		char dfault = '?';
+        const std::locale& loc = std::locale();
+		std::ostringstream stm;
+		while( *s != L'\0' ) {
+			stm << std::use_facet< std::ctype<wchar_t> >( loc ).narrow( *s++, dfault );
+		}
+		info.files.push_back(string(stm.str()));
+		
+			//toUTF8(udispName, dispName);
+
+        // Bring up a message box that displays the current file being processed
+        //MessageBox(GetForegroundWindow(), szName, L"Current file received", MB_OK);
+    }
+
+    // Finally, we destroy the HDROP handle so the extra memory
+    // allocated by the application is released.
+    DragFinish(hDrop);
+
+	ofAppPtr->dragEvent(info);
+
+}
+
+
 static LRESULT CALLBACK winProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam){
 
    //we catch close and destroy messages
@@ -58,6 +129,12 @@ static LRESULT CALLBACK winProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lPara
       case WM_DESTROY:
          OF_EXIT_APP(0);
          break;
+	  case WM_DROPFILES:
+            
+            // Call our function we created to display all the files.
+            // We pass the wParam because it's the HDROP handle.
+            HandleFiles(wParam);
+            break;
       default:
          return CallWindowProc(currentWndProc, handle, Msg, wParam, lParam);
       break;
@@ -71,6 +148,9 @@ static void fixCloseWindowOnWin32(){
 
 	//get the HWND
 	handle = WindowFromDC(wglGetCurrentDC());
+	
+	// enable drag and drop of files. 
+	DragAcceptFiles (handle, TRUE);
 
 	//store the current message event handler for the window
 	currentWndProc = (WNDPROC)GetWindowLongPtr(handle, GWL_WNDPROC);
@@ -105,10 +185,9 @@ ofAppGlutWindow::ofAppGlutWindow(){
 	requestedHeight		= 0;
 	nonFullScreenX		= -1;
 	nonFullScreenY		= -1;
-	mouseX				= 0;
-	mouseY				= 0;
 	lastFrameTime		= 0.0;
 	displayString		= "";
+	orientation			= 1;	
 
 }
 
@@ -140,9 +219,6 @@ void ofAppGlutWindow::setupOpenGL(int w, int h, int screenMode){
 	if (windowMode != OF_GAME_MODE){
 		glutInitWindowSize(w, h);
 		glutCreateWindow("");
-
-		//Default colors etc are now in ofGraphics - ofSetupGraphicDefaults
-		ofSetupGraphicDefaults();
 
 		/*
 		ofBackground(200,200,200);		// default bg color
@@ -198,6 +274,10 @@ void ofAppGlutWindow::initializeWindow(){
     glutSpecialUpFunc(special_key_up_cb);
 
     glutReshapeFunc(resize_cb);
+	
+#ifdef TARGET_OSX
+	glutDragEventFunc(dragEvent);
+#endif 
 
     nFramesSinceWindowResized = 0;
 
@@ -211,7 +291,6 @@ void ofAppGlutWindow::initializeWindow(){
 
 //------------------------------------------------------------
 void ofAppGlutWindow::runAppViaInfiniteLoop(ofBaseApp * appPtr){
-	static ofEventArgs voidEventArgs;
 
 	ofAppPtr = appPtr;
 
@@ -221,11 +300,7 @@ void ofAppGlutWindow::runAppViaInfiniteLoop(ofBaseApp * appPtr){
 	glutMainLoop();
 }
 
-//------------------------------------------------------------
-void ofAppGlutWindow::exitApp(){
-	ofLog(OF_LOG_VERBOSE,"GLUT OF app is being terminated!");
-	OF_EXIT_APP(0);
-}
+
 
 //------------------------------------------------------------
 float ofAppGlutWindow::getFrameRate(){
@@ -264,6 +339,32 @@ ofPoint ofAppGlutWindow::getScreenSize(){
 	int width = glutGet(GLUT_SCREEN_WIDTH);
 	int height = glutGet(GLUT_SCREEN_HEIGHT);
 	return ofPoint(width, height,0);
+}
+
+//------------------------------------------------------------
+int ofAppGlutWindow::getWidth(){
+	if( orientation == OF_ORIENTATION_DEFAULT || orientation == OF_ORIENTATION_180 ){
+		return windowW;
+	}
+	return windowH;
+}
+
+//------------------------------------------------------------
+int ofAppGlutWindow::getHeight(){
+	if( orientation == OF_ORIENTATION_DEFAULT || orientation == OF_ORIENTATION_180 ){
+		return windowH;
+	}
+	return windowW;	
+}
+
+//------------------------------------------------------------
+void ofAppGlutWindow::setOrientation(int orientationIn){
+	orientation = orientationIn;
+}
+
+//------------------------------------------------------------
+int ofAppGlutWindow::getOrientation(){
+	return orientation;
 }
 
 //------------------------------------------------------------
@@ -350,9 +451,9 @@ void ofAppGlutWindow::disableSetupScreen(){
 	bEnableSetupScreen = false;
 }
 
+
 //------------------------------------------------------------
 void ofAppGlutWindow::display(void){
-	static ofEventArgs voidEventArgs;
 
 	//--------------------------------
 	// when I had "glutFullScreen()"
@@ -398,14 +499,8 @@ void ofAppGlutWindow::display(void){
 		}
 	}
 
-	int width, height;
-
-	width  = ofGetWidth();
-	height = ofGetHeight();
-
-	height = height > 0 ? height : 1;
 	// set viewport, clear the screen
-	glViewport( 0, 0, width, height );
+	glViewport(0, 0, glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT));		// used to be glViewport( 0, 0, width, height );
 	float * bgPtr = ofBgColorPtr();
 	bool bClearAuto = ofbClearBg();
 
@@ -465,32 +560,52 @@ void ofAppGlutWindow::display(void){
 }
 
 //------------------------------------------------------------
+void rotateMouseXY(int orientation, int &x, int &y) {
+	int savedY;
+	switch(orientation) {
+		case OF_ORIENTATION_180:
+			x = ofGetWidth() - x;
+			y = ofGetHeight() - y;
+			break;
+			
+		case OF_ORIENTATION_90_RIGHT:
+			savedY = y;
+			y = x;
+			x = ofGetWidth()-savedY;
+			break;
+			
+		case OF_ORIENTATION_90_LEFT:
+			savedY = y;
+			y = ofGetHeight() - x;
+			x = savedY;
+			break;
+			
+		case OF_ORIENTATION_DEFAULT:
+		default:
+			break;
+	}
+}
+
+//------------------------------------------------------------
 void ofAppGlutWindow::mouse_cb(int button, int state, int x, int y) {
-
+	rotateMouseXY(orientation, x, y);
+	
 	if (nFrameCount > 0){
-		if(ofAppPtr){
-			ofAppPtr->mouseX = x;
-			ofAppPtr->mouseY = y;
-		}
-
 		if (state == GLUT_DOWN) {
 			ofNotifyMousePressed(x, y, button);
 		} else if (state == GLUT_UP) {
 			ofNotifyMouseReleased(x, y, button);
 		}
+
 		buttonInUse = button;
 	}
 }
 
 //------------------------------------------------------------
 void ofAppGlutWindow::motion_cb(int x, int y) {
+	rotateMouseXY(orientation, x, y);
 
 	if (nFrameCount > 0){
-		if(ofAppPtr){
-			ofAppPtr->mouseX = x;
-			ofAppPtr->mouseY = y;
-		}
-
 		ofNotifyMouseDragged(x, y, buttonInUse);
 	}
 
@@ -498,21 +613,33 @@ void ofAppGlutWindow::motion_cb(int x, int y) {
 
 //------------------------------------------------------------
 void ofAppGlutWindow::passive_motion_cb(int x, int y) {
+	rotateMouseXY(orientation, x, y);
 
 	if (nFrameCount > 0){
-		if(ofAppPtr){
-			ofAppPtr->mouseX = x;
-			ofAppPtr->mouseY = y;
-		}
-
 		ofNotifyMouseMoved(x, y);
 	}
+}
+
+//------------------------------------------------------------
+void ofAppGlutWindow::dragEvent(char ** names, int howManyFiles, int dragX, int dragY){
+	
+	// TODO: we need position info on mac passed through
+	ofDragInfo info;
+	info.position.x = dragX;
+	info.position.y = ofGetHeight()-dragY;
+
+	for (int i = 0; i < howManyFiles; i++){
+		string temp = string(names[i]);
+		info.files.push_back(temp);
+	}
+	
+	ofAppPtr->dragEvent(info);
+	
 }
 
 
 //------------------------------------------------------------
 void ofAppGlutWindow::idle_cb(void) {
-	static ofEventArgs voidEventArgs;
 
 	//	thanks to jorge for the fix:
 	//	http://www.openframeworks.cc/forum/viewtopic.php?t=515&highlight=frame+rate
@@ -560,19 +687,12 @@ void ofAppGlutWindow::idle_cb(void) {
 
 //------------------------------------------------------------
 void ofAppGlutWindow::keyboard_cb(unsigned char key, int x, int y) {
-
 	ofNotifyKeyPressed(key);
-
-	if (key == OF_KEY_ESC){				// "escape"
-		exitApp();
-	}
 }
 
 //------------------------------------------------------------
-void ofAppGlutWindow::keyboard_up_cb(unsigned char key, int x, int y) {
-
+void ofAppGlutWindow::keyboard_up_cb(unsigned char key, int x, int y){
 	ofNotifyKeyReleased(key);
-
 }
 
 //------------------------------------------------------
