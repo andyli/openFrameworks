@@ -79,7 +79,7 @@ void ofExitCallback(){
 
 	//------------------------
 	// try to close rtAudio:
-	ofSoundStreamClose();
+	//ofSoundStreamClose();
 
 	// try to close quicktime, for non-linux systems:
 	#if defined( TARGET_OSX ) || defined( TARGET_WIN32 )
