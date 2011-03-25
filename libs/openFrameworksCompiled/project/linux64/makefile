@@ -12,7 +12,7 @@
 
 
 COMPILER_OPTIMIZATION = -march=native -mtune=native -finline-functions -funroll-all-loops  -O3
-USER_CFLAGS = 
+USER_CFLAGS = -I/usr/lib/haxe/lib/hxcpp/2,07,0/include/
 
 
 
