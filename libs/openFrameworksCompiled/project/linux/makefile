@@ -25,7 +25,7 @@
 
 COMPILER_OPTIMIZATION = -march=native -mtune=native -finline-functions -funroll-all-loops  -O3
 EXCLUDE_FROM_SOURCE=_
-USER_CFLAGS = -I/usr/lib/haxe/lib/hxcpp/2,07,0/include/
+USER_CFLAGS = -I/usr/lib/haxe/lib/hxcpp/2,07,0/include/ -fPIC
 USER_LD_FLAGS = 
 USER_LIBS = 
 
